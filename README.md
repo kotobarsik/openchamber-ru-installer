@@ -1,19 +1,19 @@
-# OpenChamber RU Installer
+# Установщик русского перевода для OpenChamber
 
-Russian translation installer for OpenChamber (Windows).
+Простой установщик русского перевода для OpenChamber (Windows).
 
-## Install
-1. Download this repository.
-2. Run `install-openchamber-ru.cmd`.
-3. If needed, enter path to your local `openchamber` repository.
-4. Start OpenChamber and select `Russian` in Settings -> Language.
+## Установка
+1. Скачайте этот репозиторий.
+2. Запустите `install-openchamber-ru.cmd`.
+3. При необходимости укажите путь к локальному репозиторию `openchamber`.
+4. Запустите OpenChamber и выберите `Russian` в `Settings -> Language`.
 
-## Included
+## Что входит
 - `install-openchamber-ru.cmd`
 - `install-openchamber-ru.ps1`
 - `i18n/messages/ru.ts`
 - `i18n/messages/ru.settings.ts`
 
-## Notes
-- Works with source repository builds of OpenChamber.
-- Installer patches i18n files and adds Russian language labels.
+## Примечания
+- Работает с исходниками OpenChamber (репозиторий).
+- Установщик автоматически патчит i18n-файлы и добавляет русский язык в список.
