@@ -12,12 +12,17 @@ if not exist "%POWERSHELL_EXE%" (
 
 set "TARGET=%~1"
 
-call "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-openchamber-ru.ps1" -OpenChamberPath "%TARGET%"
+echo ============================================
+echo  OpenChamber Desktop - Russian Translation
+echo ============================================
+echo.
+
+call "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-desktop-ru.ps1" -OpenChamberPath "%TARGET%"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
   echo.
-  echo Failed with code %EXIT_CODE%.
+  echo Installation failed with code %EXIT_CODE%.
   pause
 )
 

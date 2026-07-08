@@ -5,6 +5,8 @@ export const dict = {
   "common.loading": "Загрузка...",
   "common.unavailable": "Недоступно",
   "common.language.english": "Английский",
+  "common.language.french": "Французский",
+  "common.language.japanese": "Японский",
   "common.language.simplifiedChinese": "Китайский (упрощенный)",
   "common.language.traditionalChinese": "Китайский (традиционный)",
   "common.language.ukrainian": "Украинский",
