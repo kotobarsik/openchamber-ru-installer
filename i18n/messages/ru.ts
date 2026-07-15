@@ -1385,7 +1385,7 @@ export const dict = {
   "session.newWorktree.usingPrBranch": "Использование ветки PR: {branch}",
   "session.newWorktree.fromIssue": "Из выпуска #{number}: {title}.",
   "session.newWorktree.worktreeDirectory": "Каталог рабочей копии",
-  "session.newWorktree.worktreeDirectoryPlaceholder": "my-worktree-folder",
+  "session.newWorktree.worktreeDirectoryPlaceholder": "моя-рабочая-копия",
   "session.newWorktree.resetToMatchBranchName": "Сбросить в соответствии с названием ветки",
   "session.newWorktree.sourceBranch": "Исходная ветка",
   "session.newWorktree.selectSourceBranch": "Выберите исходную ветку",
