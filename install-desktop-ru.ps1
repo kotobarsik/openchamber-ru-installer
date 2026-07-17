@@ -328,22 +328,14 @@ if ($m.Success -and $loader -notmatch ([regex]::Escape($ruFileName))) {
 }
 if ($importPatch) { Write-Ok 'Patched dynamic import chain.' } else { Write-Warn 'Dynamic import anchor not found (or ru import already present).' }
 
-$defaultLocalePatch = $false
-$m = [regex]::Match($loader, ',n2="en",')
-if ($m.Success) {
-  $loader = $loader.Substring(0, $m.Index) + ',n2="ru",' + $loader.Substring($m.Index + $m.Length)
-  $defaultLocalePatch = $true
-}
-if ($defaultLocalePatch) { Write-Ok 'Set default locale to Russian.' } else { Write-Warn 'Default locale anchor not found.' }
-
 $jfPatch = $false
 $m = [regex]::Match($loader, 'function JF\(\)\{Is\.getState\(\)\.setLocale\(KF\(\)\)\}')
-if ($m.Success -and $loader -notmatch 'localStorage\.setItem\("openchamber\.i18n\.v1"') {
-  $replacement = 'function JF(){try{typeof window!="undefined"&&window.localStorage.setItem("openchamber.i18n.v1",JSON.stringify({locale:"ru"}))}catch{}Is.getState().setLocale(KF())}'
+if ($m.Success -and $loader -notmatch 'y3\.delete\("ru"\)') {
+  $replacement = 'function JF(){try{typeof window!="undefined"&&window.localStorage.setItem("openchamber.i18n.v1",JSON.stringify({locale:"ru"}))}catch{}try{y3.delete("ru")}catch(e){}Is.getState().setLocale("ru")}'
   $loader = $loader.Substring(0, $m.Index) + $replacement + $loader.Substring($m.Index + $m.Length)
   $jfPatch = $true
 }
-if ($jfPatch) { Write-Ok 'Forced Russian locale on startup.' } else { Write-Warn 'JF() anchor not found or already patched.' }
+if ($jfPatch) { Write-Ok 'Forced Russian locale on startup (y3 + setLocale).' } else { Write-Warn 'JF() anchor not found or already patched.' }
 
 if ($loader -ne $origLoader) {
   Write-Utf8NoBom -Path $i18nFile -Content $loader
