@@ -316,6 +316,8 @@ if ($m.Success -and $loader -notmatch 'e==="ru"\|\|e\.startsWith\("ru-"\)') {
 if ($normPatch) { Write-Ok 'Patched normalizeLocale.' } else { Write-Warn 'normalizeLocale anchor not found (or ru branch already present).' }
 
 $importPatch = $false
+# Remove any stale ru import first
+$loader = $loader -replace ':t==="ru"\?await\s+[a-zA-Z_]+\(\(\)=>import\("\./ru-[A-Za-z0-9_-]+\.js"\),\[\]\)', ''
 $m = [regex]::Match($loader, 't==="pl"\?await\s+([a-zA-Z_]+)\(\(\)=>import\("\./pl-[A-Za-z0-9_-]+\.js"\),\[\]\)')
 if ($m.Success -and $loader -notmatch ([regex]::Escape($ruFileName))) {
   $importFn = $m.Groups[1].Value
