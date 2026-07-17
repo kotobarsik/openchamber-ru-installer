@@ -326,6 +326,14 @@ if ($m.Success -and $loader -notmatch ([regex]::Escape($ruFileName))) {
 }
 if ($importPatch) { Write-Ok 'Patched dynamic import chain.' } else { Write-Warn 'Dynamic import anchor not found (or ru import already present).' }
 
+$defaultLocalePatch = $false
+$m = [regex]::Match($loader, ',n2="en",')
+if ($m.Success) {
+  $loader = $loader.Substring(0, $m.Index) + ',n2="ru",' + $loader.Substring($m.Index + $m.Length)
+  $defaultLocalePatch = $true
+}
+if ($defaultLocalePatch) { Write-Ok 'Set default locale to Russian.' } else { Write-Warn 'Default locale anchor not found.' }
+
 if ($loader -ne $origLoader) {
   Write-Utf8NoBom -Path $i18nFile -Content $loader
   Write-Ok 'Saved patched i18n loader.'
