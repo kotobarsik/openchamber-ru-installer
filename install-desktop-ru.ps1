@@ -369,6 +369,16 @@ foreach ($f in $localeFiles) {
   }
 }
 
+Write-Step 'Clearing Service Worker cache...'
+$swPath = "$env:APPDATA\OpenChamber\Service Worker"
+$cachePath = "$env:APPDATA\OpenChamber\Cache\Cache_Data"
+$scriptCachePath = "$env:APPDATA\OpenChamber\ScriptCache"
+$cleared = $false
+if (Test-Path $swPath) { Remove-Item -Recurse -Force "$swPath\*" -ErrorAction SilentlyContinue; $cleared = $true }
+if (Test-Path $cachePath) { Remove-Item -Recurse -Force "$cachePath\*" -ErrorAction SilentlyContinue; $cleared = $true }
+if (Test-Path $scriptCachePath) { Remove-Item -Recurse -Force "$scriptCachePath\*" -ErrorAction SilentlyContinue; $cleared = $true }
+if ($cleared) { Write-Ok 'Cache cleared — old translation will not be served.' } else { Write-Warn 'No cache found.' }
+
 Write-Host ''
 Write-Ok 'Russian translation installed successfully.'
 Write-Host ''
