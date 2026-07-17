@@ -334,6 +334,15 @@ if ($m.Success) {
 }
 if ($defaultLocalePatch) { Write-Ok 'Set default locale to Russian.' } else { Write-Warn 'Default locale anchor not found.' }
 
+$jfPatch = $false
+$m = [regex]::Match($loader, 'function JF\(\)\{Is\.getState\(\)\.setLocale\(KF\(\)\)\}')
+if ($m.Success -and $loader -notmatch 'localStorage\.setItem\("openchamber\.i18n\.v1"') {
+  $replacement = 'function JF(){try{typeof window!="undefined"&&window.localStorage.setItem("openchamber.i18n.v1",JSON.stringify({locale:"ru"}))}catch{}Is.getState().setLocale(KF())}'
+  $loader = $loader.Substring(0, $m.Index) + $replacement + $loader.Substring($m.Index + $m.Length)
+  $jfPatch = $true
+}
+if ($jfPatch) { Write-Ok 'Forced Russian locale on startup.' } else { Write-Warn 'JF() anchor not found or already patched.' }
+
 if ($loader -ne $origLoader) {
   Write-Utf8NoBom -Path $i18nFile -Content $loader
   Write-Ok 'Saved patched i18n loader.'
