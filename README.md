@@ -36,7 +36,7 @@
 ## Что входит
 - `install-desktop-ru.cmd` / `install-desktop-ru.ps1` — установщик.
 - `uninstall-desktop-ru.cmd` / `uninstall-desktop-ru.ps1` — удаление.
-- `i18n/messages/ru.ts` / `i18n/messages/ru.settings.ts` — исходники перевода (5650 ключей, полное покрытие словаря v1.22.1; сверено с `en`/`uk`/`de`: нет пропусков и битых плейсхолдеров).
+- `i18n/messages/ru.ts` / `i18n/messages/ru.settings.ts` — исходники перевода (6344 ключа, полное покрытие словаря v2.0.1; сверено с `uk`/`de`/`fr`/`ja`: нет пропусков и битых плейсхолдеров).
 
 ## Флаги и автоматизация
 - `install-desktop-ru.cmd ["путь"] [-Force]` / `uninstall-desktop-ru.cmd ["путь"] [-Force]`:
@@ -46,7 +46,7 @@
 - Вывод скриптов — на русском, по шагам (Шаг X/7), полный лог пишется в `%TEMP%\openchamber-ru-patch.log`.
 
 ## Совместимость
-Тестировалось на OpenChamber Desktop **v1.14.1** и **v1.22.1** (Windows x64, Electron-сборка).
+Тестировалось на OpenChamber Desktop **v1.14.1**, **v1.22.1**, **v1.23.2**, **v2.0.0** и **v2.0.1** (Windows x64, Electron-сборка).
 Якоря патчей версионно-независимые (с фолбэками под v1.14.x); новые локали `de`/`tr` (появились после v1.14) тоже покрыты.
 
 Скрипт не требует прав администратора: приложение ставится в `%LOCALAPPDATA%\Programs\` и пользователь имеет права на запись.
