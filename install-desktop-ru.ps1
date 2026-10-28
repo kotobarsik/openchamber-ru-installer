@@ -343,6 +343,8 @@ function Test-PatchedLoader {
   $res += @{ n = 'en-label';  ok = (($Core -match '"common\.language\.russian":"Russian"') -or ($Core -notmatch '"common\.language\.hebrew":"Hebrew"')) }
   # INTL-карта: либо ru:"ru-RU" добавлен, либо карты нет вовсе (старые сборки).
   $res += @{ n = 'intl';      ok = (($Intl -match 'ru:"ru-RU"') -or ($Intl -notmatch '\{en:"en-US"')) }
+  # Карта дневных подсказок лоадера (v2.5.x): либо ru добавлен, либо карты нет.
+  $res += @{ n = 'copy-map';  ok = ((($Core + $Intl) -notmatch '\{de:\(\)=>[^{}]*he:\(\)=>') -or (($Core + $Intl) -match 'ru:\(\)=>Promise\.resolve\(\{copy:')) }
   return $res
 }
 
@@ -362,6 +364,23 @@ function Patch-IntlMap {
     return @{ text = $Text; state = 'skip' }
   }
   return @{ text = $Text; state = 'FAILED' }
+}
+
+function Patch-CopyMap {
+  param([string]$Text)
+  # В v2.5.x у лоадера появилась отдельная карта дневных подсказок
+  # ({de:()=>...,...,he:()=>...}, экспорт copy), независимая от словаря UI.
+  # Без ru в этой карте принудительный setLocale("ru") падает на Mvt[t]().
+  # Ищем именно объект карты: "disable:()=>" тоже содержит подстроку "de:()=>".
+  $mMap = [regex]::Match($Text, '\{de:\(\)=>[^{}]*he:\(\)=>[^{}]*\}')
+  if (-not $mMap.Success) { return @{ text = $Text; state = 'skip' } }
+  if ($Text -match 'ru:\(\)=>Promise\.resolve\(\{copy:') { return @{ text = $Text; state = 'already' } }
+  $mEn = [regex]::Match($Text, 'byLocale:\{en:([A-Za-z_$][A-Za-z0-9_$]*)\}')
+  if (-not $mEn.Success) { return @{ text = $Text; state = 'FAILED' } }
+  $copyVar = $mEn.Groups[1].Value
+  $insert = ',ru:()=>Promise.resolve({copy:' + $copyVar + '})'
+  $insertAt = $mMap.Index + $mMap.Length - 1
+  return @{ text = $Text.Substring(0, $insertAt) + $insert + $Text.Substring($insertAt); state = 'patched' }
 }
 
 function Stop-AppIfRunning {
@@ -637,6 +656,23 @@ if ($core -match (':[A-Za-z_$][A-Za-z0-9_$]*==="ru"\?await\s+\w+\(\(\)=>import\(
   }
 }
 Report-PatchState -Name 'dynamic import chain' -State $importState
+
+# Отдельная карта дневных подсказок в лоадере (v2.5.x). Если её не патчить,
+# принудительный русский locale падает с "Mvt[t] is not a function" ещё до
+# отрисовки интерфейса. Для ru используем английский copy как безопасный запасной
+# вариант: подсказки декоративные, а словарь UI грузится отдельной веткой выше.
+$copyState = 'skip'
+$copyTargets = if ($sameFile) { @('core') } else { @('intl','core') }
+foreach ($copyTargetName in $copyTargets) {
+  $copyTarget = if ($copyTargetName -eq 'core') { $core } else { $intl }
+  $copyResult = Patch-CopyMap -Text $copyTarget
+  if ($copyResult.state -eq 'skip') { continue }
+  if ($copyTargetName -eq 'core') { $core = $copyResult.text } else { $intl = $copyResult.text }
+  $copyState = $copyResult.state
+  break
+}
+if ($copyState -eq 'skip') { Write-Host '  Карта дневных подсказок не найдена (эта сборка её не использует).' -ForegroundColor DarkGray }
+Report-PatchState -Name 'copy locale map (ru fallback)' -State $copyState
 
 $jfState = 'FAILED'
 $initOrigText = $null
