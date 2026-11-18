@@ -9,13 +9,13 @@
 Скачивать ZIP не нужно — установщик сам заберёт перевод с GitHub:
 
 ```powershell
-irm https://raw.githubusercontent.com/hays0503/openchamber-ru-installer/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kotobarsik/openchamber-ru-installer/main/install.ps1 | iex
 ```
 
 Удаление — так же одной командой:
 
 ```powershell
-irm https://raw.githubusercontent.com/hays0503/openchamber-ru-installer/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/kotobarsik/openchamber-ru-installer/main/uninstall.ps1 | iex
 ```
 
 Перевод каждый раз качается заново, поэтому повторный запуск команды — это и есть обновление перевода.
