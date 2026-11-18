@@ -123,7 +123,7 @@ function Write-Utf8NoBom {
 # Откуда качать исходники перевода, когда установщик запущен из сети
 # (`irm https://... | iex`) и рядом нет файлов репозитория.
 # OC_RU_SOURCE — переопределение для тестов/зеркал.
-$script:SourceBase = if ($env:OC_RU_SOURCE) { $env:OC_RU_SOURCE } else { 'https://raw.githubusercontent.com/kotobarsik/openchamber-ru-installer/main' }
+$script:SourceBase = if ($env:OC_RU_SOURCE) { $env:OC_RU_SOURCE } else { 'https://raw.githubusercontent.com/hays0503/openchamber-ru-installer/main' }
 
 # Отдаёт путь к i18n-исходнику: локальный файл из клона, иначе свежая загрузка
 # в %TEMP%. Качаем каждый раз заново с cache-buster — иначе «обновить перевод»
