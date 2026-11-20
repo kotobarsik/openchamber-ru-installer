@@ -218,8 +218,19 @@ if (-not $intlFile) {
 }
 if (-not $intlFile) { $intlFile = $coreFile }
 
+# Карта дневных подсказок (2.7.3+) живёт в отдельном useAppFontEffects-*.js.
+$tipsFile = $null
+if ($stamp -and $stamp.tips) {
+  $cand = Join-Path $assets $stamp.tips
+  if (Test-Path -LiteralPath $cand) { $tipsFile = $cand }
+}
+if (-not $tipsFile) {
+  $tipsFile = Find-ContentFile -Dir $assets -Patterns @('byLocale:\{en:[A-Za-z_$][A-Za-z0-9_$]*\}', 'de:\(\)=>', 'he:\(\)=>')
+}
+if ($tipsFile -eq $coreFile -or $tipsFile -eq $intlFile) { $tipsFile = $null }
+
 $initLeft = $false
-foreach ($pf in @(@($coreFile) + @($intlFile) | Select-Object -Unique)) {
+foreach ($pf in @(@($coreFile) + @($intlFile) + @($tipsFile) | Select-Object -Unique)) {
   if (-not $pf -or -not (Test-Path -LiteralPath $pf)) { continue }
   $leaf = Split-Path -Leaf $pf
   if (Restore-FromBackup -Path $pf) {
@@ -227,11 +238,18 @@ foreach ($pf in @(@($coreFile) + @($intlFile) | Select-Object -Unique)) {
   } else {
     Write-Warn "  Бэкапа $leaf нет — пробую хирургический откат..."
     $loaderText = [System.IO.File]::ReadAllText($pf, [System.Text.Encoding]::UTF8)
+    $changed = $false
     if ($loaderText -match '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|"common\.language\.russian":"Russian"|startsWith\("ru-"\)|setLocale\("ru"\)|ru:"ru-RU"') {
       $rev = Remove-RuFromLoader -Loader $loaderText -InitOrig $stamp.initOrig
-      [System.IO.File]::WriteAllText($pf, $rev.text, (New-Object System.Text.UTF8Encoding $false))
-      Write-Ok '  RU-правки вырезаны.'
+      $loaderText = $rev.text
+      $changed = $true
       if ($rev.initLeft) { $initLeft = $true }
+    }
+    $reduced = $loaderText -replace ',ru:\(\)=>Promise\.resolve\(\{copy:[A-Za-z_$][A-Za-z0-9_$]*\}\)', ''
+    if ($reduced -ne $loaderText) { $loaderText = $reduced; $changed = $true }
+    if ($changed) {
+      [System.IO.File]::WriteAllText($pf, $loaderText, (New-Object System.Text.UTF8Encoding $false))
+      Write-Ok '  RU-правки вырезаны.'
     } else {
       Write-Host "  В $leaf нет RU-правок." -ForegroundColor DarkGray
     }
@@ -286,6 +304,10 @@ if ($coreFile -and (Test-Path -LiteralPath $coreFile)) {
 if ($intlFile -and $intlFile -ne $coreFile -and (Test-Path -LiteralPath $intlFile)) {
   $finalIntl = [System.IO.File]::ReadAllText($intlFile, [System.Text.Encoding]::UTF8)
   if ($finalIntl.Contains('ru:"ru-RU"')) { Write-Err '  в INTL-лоадере остался маркер ru:"ru-RU"'; $verifyOk = $false }
+}
+if ($tipsFile -and (Test-Path -LiteralPath $tipsFile)) {
+  $finalTips = [System.IO.File]::ReadAllText($tipsFile, [System.Text.Encoding]::UTF8)
+  if ($finalTips -match ',ru:\(\)=>Promise\.resolve\(\{copy:') { Write-Err '  в карте подсказок остался RU-фолбэк'; $verifyOk = $false }
 }
 $localeLeft = @(Get-ChildItem -LiteralPath $assets -Filter '*.js' -ErrorAction SilentlyContinue | Where-Object {
   $_.Name -match $localeRx

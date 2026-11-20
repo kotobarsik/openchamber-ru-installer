@@ -331,7 +331,7 @@ function Invoke-Rollback {
 }
 
 function Test-PatchedLoader {
-  param([string]$Core,[string]$Intl,[string]$ChunkName)
+  param([string]$Core,[string]$Intl,[string]$ChunkName,[string]$Tips)
   $res = @()
   $res += @{ n = 'locales';   ok = ($Core -match ',"ru"\]') }
   $res += @{ n = 'labels';    ok = ($Core -match 'ru:"common\.language\.russian"') }
@@ -344,7 +344,9 @@ function Test-PatchedLoader {
   # INTL-карта: либо ru:"ru-RU" добавлен, либо карты нет вовсе (старые сборки).
   $res += @{ n = 'intl';      ok = (($Intl -match 'ru:"ru-RU"') -or ($Intl -notmatch '\{en:"en-US"')) }
   # Карта дневных подсказок лоадера (v2.5.x): либо ru добавлен, либо карты нет.
-  $res += @{ n = 'copy-map';  ok = ((($Core + $Intl) -notmatch '\{de:\(\)=>[^{}]*he:\(\)=>') -or (($Core + $Intl) -match 'ru:\(\)=>Promise\.resolve\(\{copy:')) }
+  # В 2.7.3 карта лежит в отдельном файле ($Tips), поэтому смотрим и его.
+  $allCopy = $Core + $Intl + $Tips
+  $res += @{ n = 'copy-map';  ok = (($allCopy -notmatch '\{de:\(\)=>[^{}]*he:\(\)=>') -or ($allCopy -match 'ru:\(\)=>Promise\.resolve\(\{copy:')) }
   return $res
 }
 
@@ -456,12 +458,20 @@ $sameFile = ($coreFile -eq $intlFile)
 Write-Step "Файл INTL-карты: $(Split-Path -Leaf $intlFile)"
 if ($sameFile) { Write-Host '  Ядро и INTL-карта в одном файле (раскладка 2.1.x).' -ForegroundColor DarkGray }
 
+# Карта дневных подсказок (v2.5.x+) в 2.7.3 переехала из INTL-лоадера в отдельный
+# useAppFontEffects-*.js: там лежит locale -> import(...), а не Intl-теги.
+# Без ru в этой карте включение русского падает ещё при загрузке модуля.
+$tipsFile = Find-ContentFile -Dir $assets -Patterns @('byLocale:\{en:[A-Za-z_$][A-Za-z0-9_$]*\}', 'de:\(\)=>', 'he:\(\)=>')
+if ($tipsFile -eq $coreFile -or $tipsFile -eq $intlFile) { $tipsFile = $null }
+if ($tipsFile) { Write-Step "Файл карты подсказок: $(Split-Path -Leaf $tipsFile)" }
+
 # Detect stale leftovers (e.g. app updated without uninstall): loader unpatched
 # but .bak / ru chunks / stamp from a previous install still present.
 $coreText = [System.IO.File]::ReadAllText($coreFile, [System.Text.Encoding]::UTF8)
 $intlText  = [System.IO.File]::ReadAllText($intlFile, [System.Text.Encoding]::UTF8)
+$tipsText  = if ($tipsFile) { [System.IO.File]::ReadAllText($tipsFile, [System.Text.Encoding]::UTF8) } else { $null }
 $ruMarkerRx = '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|setLocale\("ru"\)|ru:"ru-RU"'
-$filesHasRu = (($coreText -match $ruMarkerRx) -or ($intlText -match $ruMarkerRx))
+$filesHasRu = (($coreText -match $ruMarkerRx) -or ($intlText -match $ruMarkerRx) -or ($tipsText -and $tipsText -match 'ru:\(\)=>Promise\.resolve\('))
 $anyBak = @(Get-ChildItem -LiteralPath $assets -Filter '*.bak' -ErrorAction SilentlyContinue).Count -gt 0
 $staleReason = $null
 if ($stamp -and $stamp.appVersion -and $appVersion -ne 'unknown' -and $stamp.appVersion -ne $appVersion) {
@@ -509,6 +519,8 @@ Write-Ok "Записан $ruPath"
 Next-Step 'Бэкап и патч файлов i18n'
 $patchFiles = @($coreFile)
 if (-not $sameFile) { $patchFiles += $intlFile }
+if ($tipsFile) { $patchFiles += $tipsFile }
+$patchFiles = @($patchFiles | Select-Object -Unique)
 foreach ($pf in $patchFiles) {
   $leaf = Split-Path -Leaf $pf
   $pfHasRu = ([System.IO.File]::ReadAllText($pf, [System.Text.Encoding]::UTF8) -match $ruMarkerRx)
@@ -532,8 +544,10 @@ foreach ($pf in $patchFiles) {
 
 $core = $coreText
 $intl = $intlText
+$tips = $tipsText
 $origCore = $core
 $origIntl = $intl
+$origTips = $tips
 
 $patchStates = @{}
 function Report-PatchState {
@@ -599,17 +613,27 @@ Report-PatchState -Name 'EN dict (common.language.russian)' -State $enLabelState
 # В 2.3.1 после tr-ветки идут ar/he, поэтому якорь, требовавший '…"tr":}' (конец
 # цепочки), больше не срабатывает. Цепляемся к самой tr-ветке и вставляем ru-ветку
 # ПЕРЕД ней — это одинаково верно и для старых сборок, где после tr шла '}'.
+# В 2.7.3 цепочку тернарников заменили на if (... ) return "tr"; — поддерживаем обе формы.
 $normState = 'FAILED'
+$normStyle = 'ternary'
 $m = [regex]::Match($core, '([A-Za-z_$][A-Za-z0-9_$]*)==="tr"\|\|\1\.startsWith\("tr-"\)\?"tr":')
 $normParam = $null
 if ($m.Success) { $normParam = $m.Groups[1].Value }
+if (-not $m.Success) {
+  $m = [regex]::Match($core, 'if\(([A-Za-z_$][A-Za-z0-9_$]*)==="tr"\|\|\1\.startsWith\("tr-"\)\)return"tr";')
+  if ($m.Success) { $normParam = $m.Groups[1].Value; $normStyle = 'if' }
+}
 if (-not $m.Success) {
   # Fallback for older builds (v1.14.x): последняя известная локаль — pl
   $m = [regex]::Match($core, '([A-Za-z_$][A-Za-z0-9_$]*)==="pl"\|\|\1\.startsWith\("pl-"\)\?"pl":')
   if ($m.Success) { $normParam = $m.Groups[1].Value }
 }
 if ($m.Success -and $core -notmatch 'startsWith\("ru-"\)') {
-  $replacement = $normParam + '==="ru"||' + $normParam + '.startsWith("ru-")?"ru":' + $m.Value
+  if ($normStyle -eq 'if') {
+    $replacement = 'if(' + $normParam + '==="ru"||' + $normParam + '.startsWith("ru-"))return"ru";' + $m.Value
+  } else {
+    $replacement = $normParam + '==="ru"||' + $normParam + '.startsWith("ru-")?"ru":' + $m.Value
+  }
   $core = $core.Substring(0, $m.Index) + $replacement + $core.Substring($m.Index + $m.Length)
   $normState = 'patched'
 } elseif ($core -match 'startsWith\("ru-"\)') {
@@ -661,13 +685,24 @@ Report-PatchState -Name 'dynamic import chain' -State $importState
 # принудительный русский locale падает с "Mvt[t] is not a function" ещё до
 # отрисовки интерфейса. Для ru используем английский copy как безопасный запасной
 # вариант: подсказки декоративные, а словарь UI грузится отдельной веткой выше.
+# В 2.7.3 карта живёт в отдельном файле ($tips), в более старых — в ядре/INTL.
 $copyState = 'skip'
-$copyTargets = if ($sameFile) { @('core') } else { @('intl','core') }
+$copyTargets = @()
+if ($null -ne $tips) { $copyTargets += 'tips' }
+if ($sameFile) { $copyTargets += 'core' } else { $copyTargets += @('intl', 'core') }
 foreach ($copyTargetName in $copyTargets) {
-  $copyTarget = if ($copyTargetName -eq 'core') { $core } else { $intl }
+  $copyTarget = switch ($copyTargetName) {
+    'core' { $core }
+    'intl' { $intl }
+    default { $tips }
+  }
   $copyResult = Patch-CopyMap -Text $copyTarget
   if ($copyResult.state -eq 'skip') { continue }
-  if ($copyTargetName -eq 'core') { $core = $copyResult.text } else { $intl = $copyResult.text }
+  switch ($copyTargetName) {
+    'core' { $core = $copyResult.text }
+    'intl' { $intl = $copyResult.text }
+    default { $tips = $copyResult.text }
+  }
   $copyState = $copyResult.state
   break
 }
@@ -734,6 +769,11 @@ if (-not $sameFile) {
     Write-Host '  INTL-лоадер без изменений (всё уже применено).' -ForegroundColor DarkGray
   }
 }
+if ($tipsFile -and $null -ne $tips -and $tips -ne $origTips) {
+  Write-Utf8NoBom -Path $tipsFile -Content $tips
+  $script:touchedFiles += $tipsFile
+  Write-Ok 'Пропатченная карта подсказок сохранена.'
+}
 
 Next-Step 'Патч остальных локалей'
 Write-Step 'Добавляю common.language.russian в остальные локали...'
@@ -787,7 +827,11 @@ Next-Step 'Проверка установки'
 $verifyErrors = @()
 $diskCore = [System.IO.File]::ReadAllText($coreFile, [System.Text.Encoding]::UTF8)
 $diskIntl = if ($sameFile) { $diskCore } else { [System.IO.File]::ReadAllText($intlFile, [System.Text.Encoding]::UTF8) }
-foreach ($c in (Test-PatchedLoader -Core $diskCore -Intl $diskIntl -ChunkName $ruFileName)) {
+$diskTips = if ($tipsFile) { [System.IO.File]::ReadAllText($tipsFile, [System.Text.Encoding]::UTF8) } else { $null }
+if ($diskTips -and $copyState -eq 'patched' -and $diskTips -notmatch 'ru:\(\)=>Promise\.resolve\(') {
+  $verifyErrors += 'tips.no-russian-copy'
+}
+foreach ($c in (Test-PatchedLoader -Core $diskCore -Intl $diskIntl -Tips $diskTips -ChunkName $ruFileName)) {
   if (-not $c.ok) { $verifyErrors += ("loader." + $c.n) }
 }
 if (-not (Test-Path -LiteralPath $ruPath)) {
@@ -805,6 +849,10 @@ if (-not (Test-Path -LiteralPath $ruPath)) {
     if ($LASTEXITCODE -ne 0) { $verifyErrors += 'core.syntax' } else { Write-Ok 'Синтаксис ядра OK (node --check).' }
     & node --check $intlFile | Out-Null
     if ($LASTEXITCODE -ne 0) { $verifyErrors += 'intl.syntax' } else { Write-Ok 'Синтаксис INTL-лоадера OK (node --check).' }
+    if ($tipsFile -and $copyState -eq 'patched') {
+      & node --check $tipsFile | Out-Null
+      if ($LASTEXITCODE -ne 0) { $verifyErrors += 'tips.syntax' } else { Write-Ok 'Синтаксис карты подсказок OK (node --check).' }
+    }
   } else {
     Write-Host '  node не найден — пропускаю проверку синтаксиса JS.' -ForegroundColor DarkGray
   }
@@ -832,6 +880,7 @@ if ($appVersion -ne 'unknown') {
     date       = (Get-Date).ToString('o')
     core       = (Split-Path -Leaf $coreFile)
     intl       = if ($sameFile) { $null } else { (Split-Path -Leaf $intlFile) }
+    tips       = if ($tipsFile) { (Split-Path -Leaf $tipsFile) } else { $null }
     initOrig   = $initOrigText
   }
   Write-Utf8NoBom -Path $stampPath -Content ($stampObj | ConvertTo-Json)
