@@ -99,6 +99,8 @@ function Get-AppVersion {
   return 'unknown'
 }
 
+$restoreInitRx = '\brestoreLocale:\(\)=>\{[^{};]+;[A-Za-z_$][A-Za-z0-9_$]*\("ru","startup",[^{}]*\)\}'
+
 function Remove-RuFromLoader {
   # Best-effort surgical reversal of the RU patch when no .bak exists.
   # Returns @{ text = <loader>; initLeft = <bool> }.
@@ -116,7 +118,13 @@ function Remove-RuFromLoader {
   # Имя параметра импорта гибкое (в 2.2.0 e, в 2.1.x t).
   $l = $l -replace ':[A-Za-z_$][A-Za-z0-9_$]*==="ru"\?await\s+\w+\(\(\)=>import\("\./ru-[^"]+\.js"\)(?:,__vite__mapDeps\(\[[0-9,]*\]\))?(?:,\[\])?\)', ''
   $initLeft = $false
-  if ($l -match 'setLocale\("ru"\)') {
+  if (($restoreInit = [regex]::Match($l, $restoreInitRx)).Success) {
+    if ($InitOrig -cmatch '^restoreLocale:') {
+      $l = $l.Substring(0, $restoreInit.Index) + $InitOrig + $l.Substring($restoreInit.Index + $restoreInit.Length)
+    } else {
+      $initLeft = $true
+    }
+  } elseif ($l -match 'setLocale\("ru"\)') {
     $reversed = $false
     # Older builds (v1.14.x): forced init has fixed minified names — reversible exactly.
     $oldForced = 'function JF(){try{typeof window!="undefined"&&window.localStorage.setItem("openchamber.i18n.v1",JSON.stringify({locale:"ru"}))}catch{}try{y3.delete("ru")}catch(e){}Is.getState().setLocale("ru")}'
@@ -239,7 +247,7 @@ foreach ($pf in @(@($coreFile) + @($intlFile) + @($tipsFile) | Select-Object -Un
     Write-Warn "  Бэкапа $leaf нет — пробую хирургический откат..."
     $loaderText = [System.IO.File]::ReadAllText($pf, [System.Text.Encoding]::UTF8)
     $changed = $false
-    if ($loaderText -match '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|"common\.language\.russian":"Russian"|startsWith\("ru-"\)|setLocale\("ru"\)|ru:"ru-RU"') {
+    if (($loaderText -match $restoreInitRx) -or ($loaderText -match '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|"common\.language\.russian":"Russian"|startsWith\("ru-"\)|setLocale\("ru"\)|ru:"ru-RU"')) {
       $rev = Remove-RuFromLoader -Loader $loaderText -InitOrig $stamp.initOrig
       $loaderText = $rev.text
       $changed = $true
@@ -299,6 +307,7 @@ if ($coreFile -and (Test-Path -LiteralPath $coreFile)) {
   $finalLoader = [System.IO.File]::ReadAllText($coreFile, [System.Text.Encoding]::UTF8)
   $markers = @('==="ru"?await', ',"ru"]', 'ru:"common.language.russian"', '"common.language.russian":"Russian"', 'startsWith("ru-")', 'setLocale("ru")', 'ru:"ru-RU"')
   $hit = @($markers | Where-Object { $finalLoader.Contains($_) })
+  if ($finalLoader -match $restoreInitRx) { $hit += 'restoreLocale' }
   if ($hit.Count -gt 0) { Write-Err ("  в ядре остались RU-маркеры: " + ($hit -join ', ')); $verifyOk = $false }
 }
 if ($intlFile -and $intlFile -ne $coreFile -and (Test-Path -LiteralPath $intlFile)) {
