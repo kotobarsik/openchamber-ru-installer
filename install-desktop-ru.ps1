@@ -330,6 +330,9 @@ function Invoke-Rollback {
   Write-Warn 'Откат завершён.'
 }
 
+$restoreLocaleRx = '\brestoreLocale:\(\)=>\{const (?<startup>[A-Za-z_$][A-Za-z0-9_$]*)=[A-Za-z_$][A-Za-z0-9_$]*,(?<profile>[A-Za-z_$][A-Za-z0-9_$]*)=[A-Za-z_$][A-Za-z0-9_$]*;[A-Za-z_$][A-Za-z0-9_$]*\((?<locale>[A-Za-z_$][A-Za-z0-9_$]*\(\)|"ru"),"startup",\(\)=>\k<startup>===[A-Za-z_$][A-Za-z0-9_$]*&&\k<profile>===[A-Za-z_$][A-Za-z0-9_$]*\)\}'
+$patchedInitRx = 'setLocale\("ru"\)|\brestoreLocale:\(\)=>\{[^{};]+;[A-Za-z_$][A-Za-z0-9_$]*\("ru","startup",'
+
 function Test-PatchedLoader {
   param([string]$Core,[string]$Intl,[string]$ChunkName,[string]$Tips)
   $res = @()
@@ -337,7 +340,7 @@ function Test-PatchedLoader {
   $res += @{ n = 'labels';    ok = ($Core -match 'ru:"common\.language\.russian"') }
   $res += @{ n = 'normalize'; ok = ($Core -match 'startsWith\("ru-"\)') }
   $res += @{ n = 'import';    ok = ($Core.Contains($ChunkName) -and ($Core -match '[A-Za-z_$][A-Za-z0-9_$]*==="ru"\?await')) }
-  $res += @{ n = 'init';      ok = ($Core -match 'setLocale\("ru"\)') }
+  $res += @{ n = 'init';      ok = ($Core -match $patchedInitRx) }
   # Подпись «Russian» для английского словаря: либо добавлена, либо EN-словарь
   # этой сборки не содержит карты подписей языков (очень старые сборки).
   $res += @{ n = 'en-label';  ok = (($Core -match '"common\.language\.russian":"Russian"') -or ($Core -notmatch '"common\.language\.hebrew":"Hebrew"')) }
@@ -470,7 +473,7 @@ if ($tipsFile) { Write-Step "Файл карты подсказок: $(Split-Pat
 $coreText = [System.IO.File]::ReadAllText($coreFile, [System.Text.Encoding]::UTF8)
 $intlText  = [System.IO.File]::ReadAllText($intlFile, [System.Text.Encoding]::UTF8)
 $tipsText  = if ($tipsFile) { [System.IO.File]::ReadAllText($tipsFile, [System.Text.Encoding]::UTF8) } else { $null }
-$ruMarkerRx = '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|setLocale\("ru"\)|ru:"ru-RU"'
+$ruMarkerRx = '==="ru"\?await|,"ru"\]|ru:"common\.language\.russian"|ru:"ru-RU"|' + $patchedInitRx
 $filesHasRu = (($coreText -match $ruMarkerRx) -or ($intlText -match $ruMarkerRx) -or ($tipsText -and $tipsText -match 'ru:\(\)=>Promise\.resolve\('))
 $anyBak = @(Get-ChildItem -LiteralPath $assets -Filter '*.bak' -ErrorAction SilentlyContinue).Count -gt 0
 $staleReason = $null
@@ -738,12 +741,28 @@ if ($jfState -ne 'patched') {
     $jfState = 'already'
   }
 }
+if ($jfState -eq 'FAILED') {
+  # В 2.8.1 initializeLocale вызывает restoreLocale. Меняем только язык,
+  # сохраняя проверку, что выбор языка или смена профиля не обогнали запуск.
+  $restoreMatches = [regex]::Matches($core, $restoreLocaleRx)
+  if ($restoreMatches.Count -eq 1) {
+    $m = $restoreMatches[0]
+    $locale = $m.Groups['locale']
+    if ($locale.Value -eq '"ru"') {
+      $jfState = 'already'
+    } else {
+      $initOrigText = $m.Value
+      $core = $core.Substring(0, $locale.Index) + '"ru"' + $core.Substring($locale.Index + $locale.Length)
+      $jfState = 'patched'
+    }
+  }
+}
 Report-PatchState -Name 'startup locale init' -State $jfState
 
 # Повторный запуск поверх уже пропатченного ядра не может восстановить исходный
 # вид init-функции — берём его из штампа прошлой установки, иначе удаление
 # без .bak не сможет вернуть файл байт-в-байт.
-if (-not $initOrigText -and $stamp -and $stamp.initOrig -and ($core -match 'setLocale\("ru"\)')) {
+if (-not $initOrigText -and $stamp -and $stamp.initOrig -and ($core -match $patchedInitRx)) {
   $initOrigText = $stamp.initOrig
 }
 
